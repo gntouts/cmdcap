@@ -45,6 +45,7 @@ func createLogFile(path string) string {
 }
 
 func CaptureCmd(path string) {
+	path = path + "logs"/
 	createLogDir(path)
 	logFile := createLogFile(path)
 
