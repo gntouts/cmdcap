@@ -7,6 +7,8 @@ import (
 	"log"
 	"os"
 	"strconv"
+
+	ps "github.com/mitchellh/go-ps"
 )
 
 func catch(err error) {
@@ -44,7 +46,37 @@ func createLogFile(path string) string {
 	return file.Name()
 }
 
+func procData() string {
+	processData := ""
+	currentPid := os.Getpid()
+	proc, err := ps.FindProcess(currentPid)
+	if err != nil {
+		log.Fatal(err)
+	}
+	pproc, err := ps.FindProcess(proc.PPid())
+	if err != nil {
+		log.Fatal(err)
+	}
+	processData = processData + "PP: " + pproc.Executable() + " (" + strconv.Itoa(pproc.Pid()) + "), "
+	processData = processData + "P: " + proc.Executable() + " (" + strconv.Itoa(proc.Pid()) + "), "
+
+	return processData
+}
+
+func argsToStr(args []string) string {
+	str := ""
+	for _, arg := range args {
+		str = str + arg + " "
+	}
+	return str
+}
+
 func CaptureCmd(path string) {
+	lastChar := path[len(path)-1:]
+	if lastChar != "/" {
+		path = path + "/"
+	}
+	process := procData()
 	path = path + "logs/"
 	createLogDir(path)
 	logFile := createLogFile(path)
@@ -53,10 +85,13 @@ func CaptureCmd(path string) {
 	catch(err)
 	defer file.Close()
 
-	argsWithProg := os.Args
+	argArr := os.Args
+	args := argsToStr(argArr)
+
+	logStr := process + "C: \"" + args + "\""
 
 	w := bufio.NewWriter(file)
-	fmt.Fprintln(w, argsWithProg)
+	fmt.Fprintln(w, logStr)
 
 	w.Flush()
 }
