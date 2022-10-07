@@ -87,8 +87,12 @@ func CaptureCmd(path string) {
 
 	argArr := os.Args
 	args := argsToStr(argArr)
+	cwdPath, err := os.Getwd()
+	if err != nil {
+		log.Println(err)
+	}
 
-	logStr := process + "C: \"" + args + "\""
+	logStr := process + "C: \"" + args + "\"" + ", D: " + cwdPath
 
 	w := bufio.NewWriter(file)
 	fmt.Fprintln(w, logStr)
