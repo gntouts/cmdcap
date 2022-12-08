@@ -1,101 +1,114 @@
 package cmdcap
 
 import (
-	"bufio"
 	"fmt"
-	"io/ioutil"
-	"log"
 	"os"
-	"strconv"
+	"path/filepath"
+	"strings"
+	"sync"
 
-	ps "github.com/mitchellh/go-ps"
+	"github.com/mitchellh/go-ps"
+	"github.com/sirupsen/logrus"
 )
+
+var once sync.Once
+
+type ProcessInfo struct {
+	Pid    int
+	Pname  string
+	Ppid   int
+	Ppname string
+	Cmd    string
+	Cwd    string
+}
+
+func GetProcessInfo() *ProcessInfo {
+	pid := Pid()
+	ppid := Ppid()
+	cmd := strings.Join(os.Args[:], " ")
+	cwd, err := os.Getwd()
+	catch(err)
+	cwd, err = filepath.Abs(cwd)
+	catch(err)
+	return &ProcessInfo{
+		Pid:    pid,
+		Ppid:   ppid,
+		Pname:  Name(pid),
+		Ppname: Name(ppid),
+		Cmd:    cmd,
+		Cwd:    cwd,
+	}
+}
+
+func (p *ProcessInfo) ToString() string {
+	s := fmt.Sprintf("cwd: %s, p: %s (%d), pp: %s (%d), cmd: %s", p.Cwd, p.Pname, p.Pid, p.Ppname, p.Ppid, p.Cmd)
+	return s
+}
+
+func (p *ProcessInfo) ToFields() logrus.Fields {
+	return logrus.Fields{
+		"pid":    p.Pid,
+		"pname":  p.Pname,
+		"ppid":   p.Ppid,
+		"ppname": p.Ppname,
+		"cmd":    p.Cmd,
+		"cwd":    p.Cwd,
+	}
+}
+
+func Pid() int {
+	return os.Getpid()
+}
+
+func Ppid() int {
+	return os.Getppid()
+}
+
+func Name(process int) string {
+	exec, err := ps.FindProcess(process)
+	if err != nil {
+		return ""
+	}
+	return exec.Executable()
+}
+
+func Pname() string {
+	return Name(Pid())
+}
+
+func PPname() string {
+	return Name(Ppid())
+}
+
+func Test() func() {
+	return func() { fmt.Println("hi") }
+}
+
+func Capture(file string) {
+	once.Do(func() {
+		logger := logrus.New()
+		logger.SetFormatter(&logrus.TextFormatter{
+			DisableColors: true,
+			FullTimestamp: true,
+			ForceQuote:    true,
+		})
+		logger.Level = logrus.DebugLevel
+		logger.SetReportCaller(true)
+		logFile, err := os.OpenFile(file, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			fmt.Println(err.Error())
+			os.Exit(-1)
+		}
+		defer logFile.Close()
+		logger.SetOutput(logFile)
+		info := GetProcessInfo()
+		logger.WithFields(info.ToFields()).Debug("cmdcap")
+	})
+}
 
 func catch(err error) {
 	if err != nil {
-		log.Fatal(err)
+		fmt.Println(err.Error())
+		os.Exit(-1)
 	}
-}
-
-func createLogDir(path string) string {
-	_, err := os.Stat(path)
-	if err != nil {
-		err := os.Mkdir(path, 0755)
-		catch(err)
-	}
-	return path
-}
-
-func countFiles(path string) int {
-	files, err := ioutil.ReadDir(path)
-	catch(err)
-	return len(files)
-}
-
-func fname(path string) string {
-	files := countFiles(path)
-	filesn := strconv.Itoa(files)
-	return path + "log-" + filesn + ".log"
-}
-
-func createLogFile(path string) string {
-	filename := fname(path)
-	file, err := os.Create(filename)
-	catch(err)
-	defer file.Close()
-	return file.Name()
-}
-
-func procData() string {
-	processData := ""
-	currentPid := os.Getpid()
-	proc, err := ps.FindProcess(currentPid)
-	if err != nil {
-		log.Fatal(err)
-	}
-	pproc, err := ps.FindProcess(proc.PPid())
-	if err != nil {
-		log.Fatal(err)
-	}
-	processData = processData + "PP: " + pproc.Executable() + " (" + strconv.Itoa(pproc.Pid()) + "), "
-	processData = processData + "P: " + proc.Executable() + " (" + strconv.Itoa(proc.Pid()) + "), "
-
-	return processData
-}
-
-func argsToStr(args []string) string {
-	str := ""
-	for _, arg := range args {
-		str = str + arg + " "
-	}
-	return str
-}
-
-func CaptureCmd(path string) {
-	lastChar := path[len(path)-1:]
-	if lastChar != "/" {
-		path = path + "/"
-	}
-	process := procData()
-	path = path + "logs/"
-	createLogDir(path)
-	logFile := createLogFile(path)
-
-	file, err := os.OpenFile(logFile, os.O_WRONLY|os.O_CREATE, 0666)
-	catch(err)
-	defer file.Close()
-
-	argArr := os.Args
-	args := argsToStr(argArr)
-	cwdPath, err := os.Getwd()
-	if err != nil {
-		log.Println(err)
-	}
-
-	logStr := process + "C: \"" + args + "\"" + ", D: " + cwdPath
-
-	w := bufio.NewWriter(file)
-	fmt.Fprintln(w, logStr)
-
-	w.Flush()
 }
