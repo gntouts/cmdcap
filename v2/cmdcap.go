@@ -93,7 +93,7 @@ func Capture(file string) {
 			ForceQuote:    true,
 		})
 		logger.Level = logrus.DebugLevel
-		logger.SetReportCaller(true)
+		logger.SetReportCaller(false)
 		logFile, err := os.OpenFile(file, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
 			fmt.Println(err.Error())
